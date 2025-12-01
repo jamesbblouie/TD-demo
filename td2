@@ -1,1 +1,303 @@
 html.index
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Tower Defense (Graphics Demo)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at top, #1e3a8a 0%, #020617 60%, #000 100%);
+      color: #e5e7eb;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
+    }
+
+    .wrapper {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #a5b4fc;
+      margin-bottom: 8px;
+    }
+
+    #info {
+      margin-bottom: 8px;
+      font-size: 0.9rem;
+    }
+
+    canvas {
+      background: #020617;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      box-shadow: 0 0 18px rgba(37, 99, 235, 0.45);
+    }
+
+    #message {
+      margin-top: 10px;
+      font-size: 1rem;
+      color: #fbbf24;
+      min-height: 1.2em;
+    }
+
+    #tip {
+      margin-top: 4px;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Tower Defense Demo</h1>
+    <div class="subtitle">One Lane • Auto Towers • Simple Graphics</div>
+    <div id="info"></div>
+    <canvas id="gameCanvas" width="800" height="200"></canvas>
+    <div id="message"></div>
+    <div id="tip">Reload the page to play the wave again.</div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const infoEl = document.getElementById("info");
+    const messageEl = document.getElementById("message");
+
+    // Lane setup
+    const lane = {
+      x: 50,
+      y: 100,
+      length: 700,
+      cells: 10
+    };
+    const cellWidth = lane.length / lane.cells;
+
+    // Game state
+    let lives = 3;
+    let enemies = [];
+    let towers = [];
+    let gameOver = false;
+    let win = false;
+
+    // Wave config
+    const totalEnemies = 7;
+    let enemiesSpawned = 0;
+    let frameCount = 0;
+    const spawnEveryNFrames = 60; // ~1 second at 60 FPS
+
+    // Enemy config
+    const enemySpeed = 0.02; // cells per frame
+    const enemyMaxHealth = 40;
+
+    // Tower config
+    // Placed at cell 3 and 6, like the console version
+    towers.push({ cell: 3, range: 2, damage: 8, cooldown: 30, cooldownTimer: 0 });
+    towers.push({ cell: 6, range: 2, damage: 10, cooldown: 45, cooldownTimer: 0 });
+
+    function spawnEnemy() {
+      enemies.push({
+        pos: 0,                  // position in "cells" along the lane (float)
+        health: enemyMaxHealth,
+        alive: true
+      });
+    }
+
+    function update() {
+      if (gameOver || win) return;
+
+      frameCount++;
+
+      // Spawn enemies over time
+      if (enemiesSpawned < totalEnemies && frameCount % spawnEveryNFrames === 0) {
+        spawnEnemy();
+        enemiesSpawned++;
+      }
+
+      // Towers attack
+      towers.forEach(tower => {
+        if (tower.cooldownTimer > 0) {
+          tower.cooldownTimer--;
+          return;
+        }
+
+        // Find target enemy in range (closest to base)
+        let target = null;
+        enemies.forEach(enemy => {
+          if (!enemy.alive) return;
+
+          const distance = Math.abs(enemy.pos - tower.cell);
+          if (distance <= tower.range) {
+            if (!target || enemy.pos > target.pos) {
+              target = enemy;
+            }
+          }
+        });
+
+        if (target) {
+          target.health -= tower.damage;
+          tower.cooldownTimer = tower.cooldown;
+          if (target.health <= 0) {
+            target.alive = false;
+          }
+        }
+      });
+
+      // Move enemies
+      enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+
+        enemy.pos += enemySpeed;
+
+        if (enemy.pos >= lane.cells - 0.5) { // reached near the base
+          enemy.alive = false;
+          lives--;
+        }
+      });
+
+      // Check win/lose conditions
+      if (lives <= 0) {
+        gameOver = true;
+        messageEl.textContent = "Your base has fallen. GAME OVER.";
+      } else {
+        // Are there any alive enemies or any left to spawn?
+        const anyAlive = enemies.some(e => e.alive);
+        if (!anyAlive && enemiesSpawned >= totalEnemies) {
+          win = true;
+          messageEl.textContent = "All enemies destroyed! You win this wave!";
+        }
+      }
+
+      infoEl.textContent = `Lives: ${lives}  |  Enemies spawned: ${enemiesSpawned}/${totalEnemies}`;
+    }
+
+    function drawLane() {
+      // Draw path line
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(lane.x, lane.y);
+      ctx.lineTo(lane.x + lane.length, lane.y);
+      ctx.stroke();
+
+      // Draw cells as faint markers
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(148, 163, 184, 0.4)";
+      for (let i = 0; i <= lane.cells; i++) {
+        const x = lane.x + i * cellWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, lane.y - 10);
+        ctx.lineTo(x, lane.y + 10);
+        ctx.stroke();
+      }
+
+      // Draw base at the end of the lane
+      const baseX = lane.x + lane.length;
+      ctx.fillStyle = "#f97316";
+      ctx.fillRect(baseX - 10, lane.y - 20, 20, 40);
+      ctx.fillStyle = "#e5e7eb";
+      ctx.font = "10px system-ui";
+      ctx.fillText("BASE", baseX - 18, lane.y - 25);
+    }
+
+    function drawTowers() {
+      towers.forEach(tower => {
+        const xCenter = lane.x + tower.cell * cellWidth + cellWidth / 2;
+        const yCenter = lane.y;
+
+        // Range circle (faint)
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(96, 165, 250, 0.2)";
+        ctx.lineWidth = 1;
+        const rangePx = tower.range * cellWidth + cellWidth / 2;
+        ctx.arc(xCenter, yCenter, rangePx, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Tower body
+        ctx.fillStyle = "#3b82f6";
+        ctx.fillRect(xCenter - 10, yCenter - 10, 20, 20);
+
+        // Cooldown indicator
+        if (tower.cooldownTimer > 0) {
+          const ratio = tower.cooldownTimer / tower.cooldown;
+          ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
+          ctx.fillRect(xCenter - 10, yCenter + 12, 20, 4);
+          ctx.fillStyle = "#a5b4fc";
+          ctx.fillRect(xCenter - 10, yCenter + 12, 20 * (1 - ratio), 4);
+        }
+      });
+    }
+
+    function drawEnemies() {
+      enemies.forEach(enemy => {
+        if (!enemy.alive) return;
+
+        const xCenter = lane.x + enemy.pos * cellWidth + cellWidth / 2;
+        const yCenter = lane.y;
+
+        // Health bar
+        const healthRatio = enemy.health / enemyMaxHealth;
+        const barWidth = 26;
+        const barHeight = 4;
+        ctx.fillStyle = "#111827";
+        ctx.fillRect(xCenter - barWidth / 2, yCenter - 22, barWidth, barHeight);
+        ctx.fillStyle = "#f97373";
+        ctx.fillRect(xCenter - barWidth / 2, yCenter - 22, barWidth * healthRatio, barHeight);
+
+        // Enemy body
+        ctx.fillStyle = "#ef4444";
+        ctx.fillRect(xCenter - 10, yCenter - 10, 20, 20);
+      });
+    }
+
+    function drawBackground() {
+      // Clear
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Slight glow background
+      const grd = ctx.createRadialGradient(
+        canvas.width / 2, canvas.height / 2, 10,
+        canvas.width / 2, canvas.height / 2, 300
+      );
+      grd.addColorStop(0, "rgba(37, 99, 235, 0.25)");
+      grd.addColorStop(1, "rgba(15, 23, 42, 1)");
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function loop() {
+      update();
+      drawBackground();
+      drawLane();
+      drawTowers();
+      drawEnemies();
+
+      if (!gameOver && !win) {
+        requestAnimationFrame(loop);
+      } else {
+        // Draw final frame a couple of times to ensure text shows nicely
+        requestAnimationFrame(() => {});
+      }
+    }
+
+    // Start the game
+    infoEl.textContent = "Lives: 3  |  Enemies spawned: 0/" + totalEnemies;
+    messageEl.textContent = "";
+    loop();
+  </script>
+</body>
+</html>
